@@ -234,6 +234,7 @@ impl Thread {
         target_os = "redox",
         target_os = "hurd",
         target_os = "aix",
+        target_os = "muffin",
     ))]
     pub fn set_name(_name: &CStr) {
         // Newlib and Emscripten have no way to set a thread name.
