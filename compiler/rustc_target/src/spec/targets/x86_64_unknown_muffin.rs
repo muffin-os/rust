@@ -17,6 +17,7 @@ pub(crate) fn target() -> Target {
         linker_flavor: LinkerFlavor::Gnu(Cc::No, Lld::Yes),
         linker: Some("rust-lld".into()),
         panic_strategy: PanicStrategy::Abort,
+        features: "-avx,-avx2".into(),
         disable_redzone: true,
         ..Default::default()
     };
