@@ -499,6 +499,12 @@ pub fn current_exe() -> io::Result<PathBuf> {
     crate::fs::read_to_string("/scheme/sys/exe").map(PathBuf::from)
 }
 
+#[cfg(target_os = "muffin")]
+pub fn current_exe() -> io::Result<PathBuf> {
+    use crate::io::ErrorKind;
+    Err(io::const_error!(ErrorKind::Unsupported, "not yet implemented!"))
+}
+
 #[cfg(target_os = "rtems")]
 pub fn current_exe() -> io::Result<PathBuf> {
     crate::fs::read_to_string("sys:exe").map(PathBuf::from)

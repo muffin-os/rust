@@ -866,6 +866,7 @@ impl Drop for Dir {
             target_os = "vxworks",
             target_os = "rtems",
             target_os = "nuttx",
+            target_os = "muffin",
         )))]
         {
             let fd = unsafe { libc::dirfd(self.0) };
@@ -987,6 +988,7 @@ impl DirEntry {
         target_os = "nto",
         target_os = "hurd",
         target_os = "rtems",
+        target_os = "muffin",
         target_vendor = "apple",
     ))]
     pub fn ino(&self) -> u64 {
