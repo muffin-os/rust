@@ -2938,22 +2938,22 @@ pub(crate) struct DynAfterMut {
 
 #[derive(Diagnostic)]
 #[diag(parse_fn_pointer_cannot_be_const)]
+#[note]
 pub(crate) struct FnPointerCannotBeConst {
     #[primary_span]
-    pub span: Span,
     #[label]
-    pub qualifier: Span,
+    pub span: Span,
     #[suggestion(code = "", applicability = "maybe-incorrect", style = "verbose")]
     pub suggestion: Span,
 }
 
 #[derive(Diagnostic)]
 #[diag(parse_fn_pointer_cannot_be_async)]
+#[note]
 pub(crate) struct FnPointerCannotBeAsync {
     #[primary_span]
-    pub span: Span,
     #[label]
-    pub qualifier: Span,
+    pub span: Span,
     #[suggestion(code = "", applicability = "maybe-incorrect", style = "verbose")]
     pub suggestion: Span,
 }
@@ -3524,4 +3524,74 @@ pub(crate) struct MoveSelfModifier {
     #[suggestion_part(code = "{modifier}")]
     pub insertion_span: Span,
     pub modifier: String,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_unsupported_operand)]
+pub(crate) struct AsmUnsupportedOperand<'a> {
+    #[primary_span]
+    #[label]
+    pub(crate) span: Span,
+    pub(crate) symbol: &'a str,
+    pub(crate) macro_name: &'static str,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_underscore_input)]
+pub(crate) struct AsmUnderscoreInput {
+    #[primary_span]
+    pub(crate) span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_sym_no_path)]
+pub(crate) struct AsmSymNoPath {
+    #[primary_span]
+    pub(crate) span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_requires_template)]
+pub(crate) struct AsmRequiresTemplate {
+    #[primary_span]
+    pub(crate) span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_expected_comma)]
+pub(crate) struct AsmExpectedComma {
+    #[primary_span]
+    #[label]
+    pub(crate) span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_expected_other)]
+pub(crate) struct AsmExpectedOther {
+    #[primary_span]
+    #[label(parse_asm_expected_other)]
+    pub(crate) span: Span,
+    pub(crate) is_inline_asm: bool,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_non_abi)]
+pub(crate) struct NonABI {
+    #[primary_span]
+    pub(crate) span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_expected_string_literal)]
+pub(crate) struct AsmExpectedStringLiteral {
+    #[primary_span]
+    #[label]
+    pub(crate) span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag(parse_asm_expected_register_class_or_explicit_register)]
+pub(crate) struct ExpectedRegisterClassOrExplicitRegister {
+    #[primary_span]
+    pub(crate) span: Span,
 }

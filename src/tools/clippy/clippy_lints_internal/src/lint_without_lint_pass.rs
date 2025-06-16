@@ -10,9 +10,8 @@ use rustc_hir::hir_id::CRATE_HIR_ID;
 use rustc_hir::intravisit::Visitor;
 use rustc_hir::{ExprKind, HirId, Item, MutTy, Mutability, Path, TyKind};
 use rustc_lint::{LateContext, LateLintPass};
-use rustc_lint_defs::declare_tool_lint;
 use rustc_middle::hir::nested_filter;
-use rustc_session::impl_lint_pass;
+use rustc_session::{declare_tool_lint, impl_lint_pass};
 use rustc_span::source_map::Spanned;
 use rustc_span::symbol::Symbol;
 use rustc_span::{Span, sym};
@@ -106,7 +105,7 @@ impl_lint_pass!(LintWithoutLintPass => [
 
 impl<'tcx> LateLintPass<'tcx> for LintWithoutLintPass {
     fn check_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx Item<'_>) {
-        if let hir::ItemKind::Static(ident, ty, Mutability::Not, body_id) = item.kind {
+        if let hir::ItemKind::Static(Mutability::Not, ident, ty, body_id) = item.kind {
             if is_lint_ref_type(cx, ty) {
                 check_invalid_clippy_version_attribute(cx, item);
 

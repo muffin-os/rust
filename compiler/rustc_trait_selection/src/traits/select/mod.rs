@@ -265,9 +265,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &PolyTraitObligation<'tcx>,
     ) -> SelectionResult<'tcx, Selection<'tcx>> {
-        if self.infcx.next_trait_solver() {
-            return self.infcx.select_in_new_trait_solver(obligation);
-        }
+        assert!(!self.infcx.next_trait_solver());
 
         let candidate = match self.select_from_obligation(obligation) {
             Err(SelectionError::Overflow(OverflowError::Canonical)) => {
@@ -299,6 +297,10 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
         &mut self,
         obligation: &TraitObligation<'tcx>,
     ) -> SelectionResult<'tcx, Selection<'tcx>> {
+        if self.infcx.next_trait_solver() {
+            return self.infcx.select_in_new_trait_solver(obligation);
+        }
+
         self.poly_select(&Obligation {
             cause: obligation.cause.clone(),
             param_env: obligation.param_env,
@@ -1782,7 +1784,7 @@ impl<'cx, 'tcx> SelectionContext<'cx, 'tcx> {
             if !generics.is_own_empty()
                 && obligation.predicate.args[generics.parent_count..].iter().any(|&p| {
                     p.has_non_region_infer()
-                        && match p.unpack() {
+                        && match p.kind() {
                             ty::GenericArgKind::Const(ct) => {
                                 self.infcx.shallow_resolve_const(ct) != ct
                             }
@@ -1917,12 +1919,23 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
         // impl `impl<T: ?Sized> Any for T { .. }`. This really shouldn't exist but is
         // necessary due to #57893. We again arbitrarily prefer the applicable candidate
         // with the lowest index.
+        //
+        // We do not want to use these impls to guide inference in case a user-written impl
+        // may also apply.
         let object_bound = candidates
             .iter()
             .filter_map(|c| if let ObjectCandidate(i) = c.candidate { Some(i) } else { None })
             .try_reduce(|c1, c2| if has_non_region_infer { None } else { Some(c1.min(c2)) });
         match object_bound {
-            Some(Some(index)) => return Some(ObjectCandidate(index)),
+            Some(Some(index)) => {
+                return if has_non_region_infer
+                    && candidates.iter().any(|c| matches!(c.candidate, ImplCandidate(_)))
+                {
+                    None
+                } else {
+                    Some(ObjectCandidate(index))
+                };
+            }
             Some(None) => {}
             None => return None,
         }
@@ -2866,7 +2879,7 @@ fn rebind_coroutine_witness_types<'tcx>(
     let shifted_coroutine_types =
         tcx.shift_bound_var_indices(bound_vars.len(), bound_coroutine_types.skip_binder());
     ty::Binder::bind_with_vars(
-        ty::EarlyBinder::bind(shifted_coroutine_types.to_vec()).instantiate(tcx, args),
+        ty::EarlyBinder::bind(shifted_coroutine_types.types.to_vec()).instantiate(tcx, args),
         tcx.mk_bound_variable_kinds_from_iter(
             bound_vars.iter().chain(bound_coroutine_types.bound_vars()),
         ),

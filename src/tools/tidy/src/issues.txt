@@ -754,7 +754,6 @@ ui/consts/issue-46553.rs
 ui/consts/issue-47789.rs
 ui/consts/issue-50439.rs
 ui/consts/issue-52023-array-size-pointer-cast.rs
-ui/consts/issue-54224.rs
 ui/consts/issue-54348.rs
 ui/consts/issue-54387.rs
 ui/consts/issue-54582.rs
@@ -939,7 +938,6 @@ ui/enum-discriminant/auxiliary/issue-41394.rs
 ui/enum-discriminant/issue-104519.rs
 ui/enum-discriminant/issue-41394-rpass.rs
 ui/enum-discriminant/issue-41394.rs
-ui/enum-discriminant/issue-43398.rs
 ui/enum-discriminant/issue-46519.rs
 ui/enum-discriminant/issue-50689.rs
 ui/enum-discriminant/issue-51582.rs

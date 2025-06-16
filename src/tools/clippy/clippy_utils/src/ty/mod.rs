@@ -20,7 +20,7 @@ use rustc_middle::traits::EvaluationResult;
 use rustc_middle::ty::layout::ValidityRequirement;
 use rustc_middle::ty::{
     self, AdtDef, AliasTy, AssocItem, AssocTag, Binder, BoundRegion, FnSig, GenericArg, GenericArgKind, GenericArgsRef,
-    GenericParamDefKind, IntTy, Region, RegionKind, TraitRef, Ty, TyCtxt, TypeFoldable, TypeSuperVisitable,
+    GenericParamDefKind, IntTy, Region, RegionKind, TraitRef, Ty, TyCtxt, TypeSuperVisitable,
     TypeVisitable, TypeVisitableExt, TypeVisitor, UintTy, Upcast, VariantDef, VariantDiscr,
 };
 use rustc_span::symbol::Ident;
@@ -78,7 +78,7 @@ pub fn can_partially_move_ty<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> bool
 /// Walks into `ty` and returns `true` if any inner type is an instance of the given adt
 /// constructor.
 pub fn contains_adt_constructor<'tcx>(ty: Ty<'tcx>, adt: AdtDef<'tcx>) -> bool {
-    ty.walk().any(|inner| match inner.unpack() {
+    ty.walk().any(|inner| match inner.kind() {
         GenericArgKind::Type(inner_ty) => inner_ty.ty_adt_def() == Some(adt),
         GenericArgKind::Lifetime(_) | GenericArgKind::Const(_) => false,
     })
@@ -96,7 +96,7 @@ pub fn contains_ty_adt_constructor_opaque<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'
         needle: Ty<'tcx>,
         seen: &mut FxHashSet<DefId>,
     ) -> bool {
-        ty.walk().any(|inner| match inner.unpack() {
+        ty.walk().any(|inner| match inner.kind() {
             GenericArgKind::Type(inner_ty) => {
                 if inner_ty == needle {
                     return true;
@@ -129,7 +129,7 @@ pub fn contains_ty_adt_constructor_opaque<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'
                             // For `impl Trait<Assoc=U>`, it will register a predicate of `<T as Trait>::Assoc = U`,
                             // so we check the term for `U`.
                             ty::ClauseKind::Projection(projection_predicate) => {
-                                if let ty::TermKind::Ty(ty) = projection_predicate.term.unpack()
+                                if let ty::TermKind::Ty(ty) = projection_predicate.term.kind()
                                     && contains_ty_adt_constructor_opaque_inner(cx, ty, needle, seen)
                                 {
                                     return true;
@@ -526,7 +526,7 @@ pub fn same_type_and_consts<'tcx>(a: Ty<'tcx>, b: Ty<'tcx>) -> bool {
             args_a
                 .iter()
                 .zip(args_b.iter())
-                .all(|(arg_a, arg_b)| match (arg_a.unpack(), arg_b.unpack()) {
+                .all(|(arg_a, arg_b)| match (arg_a.kind(), arg_b.kind()) {
                     (GenericArgKind::Const(inner_a), GenericArgKind::Const(inner_b)) => inner_a == inner_b,
                     (GenericArgKind::Type(type_a), GenericArgKind::Type(type_b)) => {
                         same_type_and_consts(type_a, type_b)
@@ -853,7 +853,7 @@ pub fn for_each_top_level_late_bound_region<B>(
                 ControlFlow::Continue(())
             }
         }
-        fn visit_binder<T: TypeFoldable<TyCtxt<'tcx>>>(&mut self, t: &Binder<'tcx, T>) -> Self::Result {
+        fn visit_binder<T: TypeVisitable<TyCtxt<'tcx>>>(&mut self, t: &Binder<'tcx, T>) -> Self::Result {
             self.index += 1;
             let res = t.super_visit_with(self);
             self.index -= 1;
@@ -996,7 +996,7 @@ fn assert_generic_args_match<'tcx>(tcx: TyCtxt<'tcx>, did: DefId, args: &[Generi
     if let Some((idx, (param, arg))) =
         params
             .clone()
-            .zip(args.iter().map(|&x| x.unpack()))
+            .zip(args.iter().map(|&x| x.kind()))
             .enumerate()
             .find(|(_, (param, arg))| match (param, arg) {
                 (GenericParamDefKind::Lifetime, GenericArgKind::Lifetime(_))
@@ -1137,21 +1137,38 @@ impl<'tcx> InteriorMut<'tcx> {
 
     /// Check if given type has interior mutability such as [`std::cell::Cell`] or
     /// [`std::cell::RefCell`] etc. and if it does, returns a chain of types that causes
-    /// this type to be interior mutable
+    /// this type to be interior mutable.  False negatives may be expected for infinitely recursive
+    /// types, and `None` will be returned there.
     pub fn interior_mut_ty_chain(&mut self, cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> Option<&'tcx ty::List<Ty<'tcx>>> {
+        self.interior_mut_ty_chain_inner(cx, ty, 0)
+    }
+
+    fn interior_mut_ty_chain_inner(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        ty: Ty<'tcx>,
+        depth: usize,
+    ) -> Option<&'tcx ty::List<Ty<'tcx>>> {
+        if !cx.tcx.recursion_limit().value_within_limit(depth) {
+            return None;
+        }
+
         match self.tys.entry(ty) {
             Entry::Occupied(o) => return *o.get(),
             // Temporarily insert a `None` to break cycles
             Entry::Vacant(v) => v.insert(None),
         };
+        let depth = depth + 1;
 
         let chain = match *ty.kind() {
-            ty::RawPtr(inner_ty, _) if !self.ignore_pointers => self.interior_mut_ty_chain(cx, inner_ty),
-            ty::Ref(_, inner_ty, _) | ty::Slice(inner_ty) => self.interior_mut_ty_chain(cx, inner_ty),
+            ty::RawPtr(inner_ty, _) if !self.ignore_pointers => self.interior_mut_ty_chain_inner(cx, inner_ty, depth),
+            ty::Ref(_, inner_ty, _) | ty::Slice(inner_ty) => self.interior_mut_ty_chain_inner(cx, inner_ty, depth),
             ty::Array(inner_ty, size) if size.try_to_target_usize(cx.tcx) != Some(0) => {
-                self.interior_mut_ty_chain(cx, inner_ty)
+                self.interior_mut_ty_chain_inner(cx, inner_ty, depth)
             },
-            ty::Tuple(fields) => fields.iter().find_map(|ty| self.interior_mut_ty_chain(cx, ty)),
+            ty::Tuple(fields) => fields
+                .iter()
+                .find_map(|ty| self.interior_mut_ty_chain_inner(cx, ty, depth)),
             ty::Adt(def, _) if def.is_unsafe_cell() => Some(ty::List::empty()),
             ty::Adt(def, args) => {
                 let is_std_collection = matches!(
@@ -1171,16 +1188,17 @@ impl<'tcx> InteriorMut<'tcx> {
 
                 if is_std_collection || def.is_box() {
                     // Include the types from std collections that are behind pointers internally
-                    args.types().find_map(|ty| self.interior_mut_ty_chain(cx, ty))
+                    args.types()
+                        .find_map(|ty| self.interior_mut_ty_chain_inner(cx, ty, depth))
                 } else if self.ignored_def_ids.contains(&def.did()) || def.is_phantom_data() {
                     None
                 } else {
                     def.all_fields()
-                        .find_map(|f| self.interior_mut_ty_chain(cx, f.ty(cx.tcx, args)))
+                        .find_map(|f| self.interior_mut_ty_chain_inner(cx, f.ty(cx.tcx, args), depth))
                 }
             },
             ty::Alias(ty::Projection, _) => match cx.tcx.try_normalize_erasing_regions(cx.typing_env(), ty) {
-                Ok(normalized_ty) if ty != normalized_ty => self.interior_mut_ty_chain(cx, normalized_ty),
+                Ok(normalized_ty) if ty != normalized_ty => self.interior_mut_ty_chain_inner(cx, normalized_ty, depth),
                 _ => None,
             },
             _ => None,
@@ -1342,7 +1360,8 @@ pub fn has_non_owning_mutable_access<'tcx>(cx: &LateContext<'tcx>, iter_ty: Ty<'
                 mutability.is_mut() || !pointee_ty.is_freeze(cx.tcx, cx.typing_env())
             },
             ty::Closure(_, closure_args) => {
-                matches!(closure_args.types().next_back(), Some(captures) if has_non_owning_mutable_access_inner(cx, phantoms, captures))
+                matches!(closure_args.types().next_back(),
+                         Some(captures) if has_non_owning_mutable_access_inner(cx, phantoms, captures))
             },
             ty::Tuple(tuple_args) => tuple_args
                 .iter()
@@ -1360,4 +1379,15 @@ pub fn is_slice_like<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> bool {
     ty.is_slice()
         || ty.is_array()
         || matches!(ty.kind(), ty::Adt(adt_def, _) if cx.tcx.is_diagnostic_item(sym::Vec, adt_def.did()))
+}
+
+/// Gets the index of a field by name.
+pub fn get_field_idx_by_name(ty: Ty<'_>, name: Symbol) -> Option<usize> {
+    match *ty.kind() {
+        ty::Adt(def, _) if def.is_union() || def.is_struct() => {
+            def.non_enum_variant().fields.iter().position(|f| f.name == name)
+        },
+        ty::Tuple(_) => name.as_str().parse::<usize>().ok(),
+        _ => None,
+    }
 }

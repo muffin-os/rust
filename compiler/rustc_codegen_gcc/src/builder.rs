@@ -12,7 +12,7 @@ use rustc_abi::{Align, HasDataLayout, Size, TargetDataLayout, WrappingRange};
 use rustc_apfloat::{Float, Round, Status, ieee};
 use rustc_codegen_ssa::MemFlags;
 use rustc_codegen_ssa::common::{
-    AtomicOrdering, AtomicRmwBinOp, IntPredicate, RealPredicate, SynchronizationScope, TypeKind,
+    AtomicRmwBinOp, IntPredicate, RealPredicate, SynchronizationScope, TypeKind,
 };
 use rustc_codegen_ssa::mir::operand::{OperandRef, OperandValue};
 use rustc_codegen_ssa::mir::place::PlaceRef;
@@ -26,11 +26,11 @@ use rustc_middle::middle::codegen_fn_attrs::CodegenFnAttrs;
 use rustc_middle::ty::layout::{
     FnAbiError, FnAbiOfHelpers, FnAbiRequest, HasTyCtxt, HasTypingEnv, LayoutError, LayoutOfHelpers,
 };
-use rustc_middle::ty::{self, Instance, Ty, TyCtxt};
+use rustc_middle::ty::{self, AtomicOrdering, Instance, Ty, TyCtxt};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_target::callconv::FnAbi;
-use rustc_target::spec::{HasTargetSpec, HasWasmCAbiOpt, HasX86AbiOpt, Target, WasmCAbi, X86Abi};
+use rustc_target::spec::{HasTargetSpec, HasX86AbiOpt, Target, X86Abi};
 
 use crate::common::{SignType, TypeReflection, type_is_pointer};
 use crate::context::CodegenCx;
@@ -75,7 +75,7 @@ impl<'a, 'gcc, 'tcx> Builder<'a, 'gcc, 'tcx> {
 
         let load_ordering = match order {
             // TODO(antoyo): does this make sense?
-            AtomicOrdering::AcquireRelease | AtomicOrdering::Release => AtomicOrdering::Acquire,
+            AtomicOrdering::AcqRel | AtomicOrdering::Release => AtomicOrdering::Acquire,
             _ => order,
         };
         let previous_value =
@@ -897,7 +897,7 @@ impl<'a, 'gcc, 'tcx> BuilderMethods<'a, 'tcx> for Builder<'a, 'gcc, 'tcx> {
     fn checked_binop(
         &mut self,
         oop: OverflowOp,
-        typ: Ty<'_>,
+        typ: Ty<'tcx>,
         lhs: Self::Value,
         rhs: Self::Value,
     ) -> (Self::Value, Self::Value) {
@@ -2394,12 +2394,6 @@ impl<'tcx> HasTargetSpec for Builder<'_, '_, 'tcx> {
     }
 }
 
-impl<'tcx> HasWasmCAbiOpt for Builder<'_, '_, 'tcx> {
-    fn wasm_c_abi_opt(&self) -> WasmCAbi {
-        self.cx.wasm_c_abi_opt()
-    }
-}
-
 impl<'tcx> HasX86AbiOpt for Builder<'_, '_, 'tcx> {
     fn x86_abi_opt(&self) -> X86Abi {
         self.cx.x86_abi_opt()
@@ -2474,8 +2468,8 @@ impl ToGccOrdering for AtomicOrdering {
             AtomicOrdering::Relaxed => __ATOMIC_RELAXED, // TODO(antoyo): check if that's the same.
             AtomicOrdering::Acquire => __ATOMIC_ACQUIRE,
             AtomicOrdering::Release => __ATOMIC_RELEASE,
-            AtomicOrdering::AcquireRelease => __ATOMIC_ACQ_REL,
-            AtomicOrdering::SequentiallyConsistent => __ATOMIC_SEQ_CST,
+            AtomicOrdering::AcqRel => __ATOMIC_ACQ_REL,
+            AtomicOrdering::SeqCst => __ATOMIC_SEQ_CST,
         };
         ordering as i32
     }
